@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model Job {
+  id        Int       @id @default(autoincrement())
+  title     String
+  type      String
+  status    JobStatus @default(pending)
+  createdAt DateTime  @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
