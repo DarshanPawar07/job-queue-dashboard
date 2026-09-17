@@ -3,6 +3,8 @@ import {
   CircleX,
   Play,
   Trash2,
+  Clock,
+
 } from 'lucide-react';
 
 import type { Job, JobStatus } from '../types/job';
@@ -21,6 +23,7 @@ interface JobRowProps {
 }
 
 const statusIcons = {
+  pending: Clock,
   running: Play,
   completed: Check,
   failed: CircleX,
