@@ -1,10 +1,9 @@
 import {
+  Clock,
+  Play,
   Check,
   CircleX,
-  Play,
   Trash2,
-  Clock,
-
 } from 'lucide-react';
 
 import type { Job, JobStatus } from '../types/job';
