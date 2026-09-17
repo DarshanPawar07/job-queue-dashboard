@@ -1,12 +1,34 @@
 import { Activity, Layers3 } from 'lucide-react';
 
+export type ApiStatus = 'checking' | 'connected' | 'offline';
+
 interface HeaderProps {
-  apiConnected: boolean;
+  apiStatus: ApiStatus;
 }
 
 export default function Header({
-  apiConnected,
+  apiStatus,
 }: HeaderProps) {
+  const statusConfig = {
+    checking: {
+      label: 'Connecting...',
+      className:
+        'border-amber-200 bg-amber-50 text-amber-700',
+    },
+    connected: {
+      label: 'API Online',
+      className:
+        'border-emerald-200 bg-emerald-50 text-emerald-700',
+    },
+    offline: {
+      label: 'API Offline',
+      className:
+        'border-rose-200 bg-rose-50 text-rose-700',
+    },
+  };
+
+  const currentStatus = statusConfig[apiStatus];
+
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -29,17 +51,18 @@ export default function Header({
 
         {/* API Status */}
         <div
-          className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-            apiConnected
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-rose-200 bg-rose-50 text-rose-700'
-          }`}
+          className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${currentStatus.className}`}
         >
-          <Activity size={13} />
+          <Activity
+            size={13}
+            className={
+              apiStatus === 'checking'
+                ? 'animate-pulse'
+                : ''
+            }
+          />
 
-          <span>
-            {apiConnected ? 'API Online' : 'API Offline'}
-          </span>
+          <span>{currentStatus.label}</span>
         </div>
       </div>
     </header>

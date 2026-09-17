@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 
-import Header from './components/Header';
+import Header, {
+  type ApiStatus,
+} from './components/Header';
 import JobForm from './components/JobForm';
 import JobList from './components/JobList';
 import StatusCards from './components/StatusCards';
@@ -25,7 +27,6 @@ import type { Job, JobStatus } from './types/job';
 
 function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
-
   const [filter, setFilter] =
     useState<StatusFilterValue>('all');
 
@@ -36,12 +37,11 @@ function App() {
     useState<Job | null>(null);
 
   const [loading, setLoading] = useState(true);
-
   const [refreshing, setRefreshing] =
     useState(false);
 
-  const [apiConnected, setApiConnected] =
-    useState(false);
+  const [apiStatus, setApiStatus] =
+    useState<ApiStatus>('checking');
 
   const [apiError, setApiError] =
     useState(false);
@@ -57,11 +57,13 @@ function App() {
     message: string;
   } | null>(null);
 
-  // =========================
-  // Load jobs
-  // =========================
+  const sleep = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadJobs = async (showRefresh = false) => {
+    const maxAttempts = 4;
+    const retryDelays = [3000, 5000, 8000];
+
     try {
       if (showRefresh) {
         setRefreshing(true);
@@ -69,24 +71,44 @@ function App() {
         setLoading(true);
       }
 
-      const [jobsData] = await Promise.all([
-        getJobs(),
-        checkHealth(),
-      ]);
-
-      setJobs(jobsData);
-      setApiConnected(true);
+      setApiStatus('checking');
       setApiError(false);
-    } catch (error) {
-      console.error('Failed to load jobs:', error);
 
-      setApiConnected(false);
+      for (
+        let attempt = 1;
+        attempt <= maxAttempts;
+        attempt++
+      ) {
+        try {
+          const [jobsData] = await Promise.all([
+            getJobs(),
+            checkHealth(),
+          ]);
+
+          setJobs(jobsData);
+          setApiStatus('connected');
+          setApiError(false);
+
+          return;
+        } catch (error) {
+          console.error(
+            `API connection attempt ${attempt} failed:`,
+            error,
+          );
+
+          if (attempt < maxAttempts) {
+            await sleep(retryDelays[attempt - 1]);
+          }
+        }
+      }
+
+      setApiStatus('offline');
       setApiError(true);
 
       setToast({
         type: 'error',
         message:
-          'Unable to connect to the backend API.',
+          'Unable to connect to the backend API. Please try again.',
       });
     } finally {
       setLoading(false);
@@ -94,33 +116,20 @@ function App() {
     }
   };
 
-  // =========================
-  // Initial load
-  // =========================
-
   useEffect(() => {
     loadJobs();
   }, []);
 
-  // =========================
-  // Toast auto-dismiss
-  // =========================
-
   useEffect(() => {
-    if (!toast) {
-      return;
-    }
+    if (!toast) return;
 
-    const timer = setTimeout(() => {
-      setToast(null);
-    }, 4000);
+    const timer = setTimeout(
+      () => setToast(null),
+      4000,
+    );
 
     return () => clearTimeout(timer);
   }, [toast]);
-
-  // =========================
-  // Filter jobs
-  // =========================
 
   const filteredJobs = useMemo(() => {
     if (filter === 'all') {
@@ -132,10 +141,6 @@ function App() {
     );
   }, [jobs, filter]);
 
-  // =========================
-  // Update job status
-  // =========================
-
   const handleStatusChange = async (
     id: number,
     status: JobStatus,
@@ -143,9 +148,10 @@ function App() {
     try {
       setUpdatingId(id);
 
-      const updatedJob = await updateJobStatus(id, {
-        status,
-      });
+      const updatedJob = await updateJobStatus(
+        id,
+        { status },
+      );
 
       setJobs((currentJobs) =>
         currentJobs.map((job) =>
@@ -173,30 +179,18 @@ function App() {
     }
   };
 
-  // =========================
-  // Open delete confirmation
-  // =========================
-
   const handleDelete = (id: number) => {
     const job = jobs.find(
       (currentJob) => currentJob.id === id,
     );
 
-    if (!job) {
-      return;
-    }
+    if (!job) return;
 
     setJobToDelete(job);
   };
 
-  // =========================
-  // Confirm delete
-  // =========================
-
   const confirmDelete = async () => {
-    if (!jobToDelete) {
-      return;
-    }
+    if (!jobToDelete) return;
 
     try {
       setDeletingId(jobToDelete.id);
@@ -231,10 +225,6 @@ function App() {
     }
   };
 
-  // =========================
-  // Job created
-  // =========================
-
   const handleJobCreated = (job: Job) => {
     setJobs((currentJobs) => [
       job,
@@ -250,14 +240,10 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <Header apiConnected={apiConnected} />
+      <Header apiStatus={apiStatus} />
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        {/* =========================
-            Page Hero
-        ========================== */}
-
+        {/* Hero */}
         <section className="mb-7 flex flex-col gap-5 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <p className="mb-2 text-sm font-semibold text-indigo-600">
@@ -269,13 +255,15 @@ function App() {
             </h2>
 
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
-              Monitor, manage, and control your background
-              jobs from one place.
+              Monitor, manage, and control your
+              background jobs from one place.
             </p>
           </div>
 
           <button
-            onClick={() => setShowCreateJob(true)}
+            onClick={() =>
+              setShowCreateJob(true)
+            }
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500 hover:shadow-indigo-600/30 active:scale-[0.98] sm:w-auto sm:px-4 sm:py-2.5"
           >
             <Plus size={18} />
@@ -283,18 +271,11 @@ function App() {
           </button>
         </section>
 
-        {/* =========================
-            Status Cards
-        ========================== */}
-
+        {/* Status Cards */}
         <StatusCards jobs={jobs} />
 
-        {/* =========================
-            Jobs Section
-        ========================== */}
-
+        {/* Jobs Section */}
         <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm sm:mt-8">
-          {/* Jobs toolbar */}
           <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-5">
             <div>
               <h3 className="font-['Manrope'] text-lg font-bold text-slate-900">
@@ -311,7 +292,6 @@ function App() {
             </div>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
-              {/* Refresh */}
               <button
                 onClick={() => loadJobs(true)}
                 disabled={refreshing}
@@ -329,7 +309,6 @@ function App() {
                 />
               </button>
 
-              {/* Filter */}
               <StatusFilter
                 value={filter}
                 onChange={setFilter}
@@ -337,32 +316,28 @@ function App() {
             </div>
           </div>
 
-          {/* =========================
-              Loading State
-          ========================== */}
-
           {loading ? (
             <div className="flex min-h-72 items-center justify-center px-4">
-              <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+              <div className="flex max-w-md flex-col items-center text-center">
+                <span className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
 
-                Loading jobs...
+                <p className="text-sm font-semibold text-slate-700">
+                  Connecting to backend...
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  The server may be waking up from
+                  inactivity. We&apos;ll automatically
+                  retry the connection.
+                </p>
               </div>
             </div>
           ) : apiError ? (
-            /* =========================
-               API Error State
-            ========================== */
-
             <ApiErrorState
               onRetry={() => loadJobs(true)}
               refreshing={refreshing}
             />
           ) : (
-            /* =========================
-               Job List
-            ========================== */
-
             <JobList
               jobs={filteredJobs}
               filtered={filter !== 'all'}
@@ -377,10 +352,7 @@ function App() {
           )}
         </section>
 
-        {/* =========================
-            Footer
-        ========================== */}
-
+        {/* Footer */}
         <footer className="mt-8 flex flex-col gap-2 border-t border-slate-200/70 pt-5 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © 2026 QueueFlow. All rights reserved.
@@ -392,21 +364,17 @@ function App() {
         </footer>
       </main>
 
-      {/* =========================
-          Create Job Modal
-      ========================== */}
-
+      {/* Create Job Modal */}
       {showCreateJob && (
         <JobForm
-          onClose={() => setShowCreateJob(false)}
+          onClose={() =>
+            setShowCreateJob(false)
+          }
           onCreated={handleJobCreated}
         />
       )}
 
-      {/* =========================
-          Delete Confirmation Modal
-      ========================== */}
-
+      {/* Delete Confirmation Modal */}
       {jobToDelete && (
         <DeleteConfirmModal
           jobTitle={jobToDelete.title}
@@ -422,10 +390,7 @@ function App() {
         />
       )}
 
-      {/* =========================
-          Toast
-      ========================== */}
-
+      {/* Toast */}
       {toast && (
         <Toast
           type={toast.type}
